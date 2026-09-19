@@ -1,0 +1,5 @@
+.env
+data/memory-store.json
+data/*.tmp
+node_modules/
+coverage/
