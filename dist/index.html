@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="BridgeOS turns conversations into relationship memory and useful next actions."
+    />
+    <meta name="theme-color" content="#10141d" />
+    <title>BridgeOS — Relationship memory</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23ecff6b'/%3E%3Cpath d='M18 39c7-15 21-15 28 0M18 25h7m14 0h7' fill='none' stroke='%2310141d' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Primary navigation">
+        <div class="brand" aria-label="BridgeOS home">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i></span>
+          <span>Bridge<span>OS</span></span>
+        </div>
+
+        <nav class="nav-list">
+          <button class="nav-item active" data-view="today" aria-current="page">
+            <span class="nav-icon" aria-hidden="true">⌁</span>
+            Today
+          </button>
+          <button class="nav-item" data-view="people">
+            <span class="nav-icon" aria-hidden="true">◎</span>
+            People
+            <span class="nav-count">6</span>
+          </button>
+          <button class="nav-item" data-view="conversations">
+            <span class="nav-icon" aria-hidden="true">◫</span>
+            Conversations
+            <span class="nav-count">8</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-label">Memory sources</div>
+        <div class="source-list">
+          <button class="source-item">
+            <span class="source-glyph deepgram">D</span>
+            Deepgram
+            <span class="status-dot" title="Connected"></span>
+          </button>
+          <button class="source-item">
+            <span class="source-glyph dropbox">◆</span>
+            Dropbox
+            <span class="status-dot" title="Connected"></span>
+          </button>
+          <button class="source-item">
+            <span class="source-glyph manual">+</span>
+            Quick notes
+            <span class="nav-count">3</span>
+          </button>
+        </div>
+
+        <div class="sidebar-spacer"></div>
+        <div class="memory-health">
+          <div class="health-row">
+            <span>Memory pulse</span>
+            <span class="health-live">Live</span>
+          </div>
+          <div class="health-bar"><i></i></div>
+          <p>14 new connections understood today</p>
+        </div>
+        <button class="profile-button" aria-label="Open profile">
+          <span class="avatar avatar-self">MJ</span>
+          <span><strong>Maya Jiang</strong><small>HackMIT 2026</small></span>
+          <span aria-hidden="true">•••</span>
+        </button>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow"><span></span> SATURDAY · 7:42 PM</p>
+            <h1>Your people, in context.</h1>
+          </div>
+          <button class="capture-button" id="captureButton">
+            <span aria-hidden="true">＋</span>
+            Capture memory
+          </button>
+        </header>
+
+        <section class="ask-section" aria-labelledby="ask-heading">
+          <div class="ask-card">
+            <div class="ask-orb" aria-hidden="true"><i></i><i></i><i></i></div>
+            <div class="ask-copy">
+              <label id="ask-heading" for="askInput">Ask your memory</label>
+              <input
+                id="askInput"
+                type="text"
+                autocomplete="off"
+                placeholder="Who should I talk to before the event ends?"
+              />
+            </div>
+            <kbd>⌘ K</kbd>
+            <button class="voice-button" id="voiceButton" aria-label="Ask by voice" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 1 0 6 0V6a3 3 0 0 0-3-3Zm-7 9a7 7 0 0 0 14 0M12 19v3m-4 0h8"/></svg>
+            </button>
+            <button class="send-button" id="askButton" aria-label="Ask BridgeOS">↗</button>
+          </div>
+          <div class="suggestion-row" aria-label="Suggested questions">
+            <button data-question="Who mentioned software engineering opportunities?">SWE opportunities</button>
+            <button data-question="Who should I follow up with tonight?">Follow-ups tonight</button>
+            <button data-question="Connect two people with overlapping interests.">Make an introduction</button>
+          </div>
+        </section>
+
+        <section class="answer-panel hidden" id="answerPanel" aria-live="polite">
+          <div class="answer-head">
+            <div class="answer-spark">✦</div>
+            <div>
+              <p>BRIDGE ANSWER</p>
+              <h2 id="answerTitle">Your best next move</h2>
+            </div>
+            <button id="closeAnswer" aria-label="Close answer">×</button>
+          </div>
+          <div id="answerBody"></div>
+        </section>
+
+        <section class="briefing" id="todayView">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">YOUR EVENING BRIEF</p>
+              <h2>Two hours left. Three high-signal moves.</h2>
+            </div>
+            <div class="event-clock"><span></span> Event ends 10:00 PM</div>
+          </div>
+
+          <div class="priority-grid">
+            <article class="priority-card priority-main">
+              <div class="card-kicker"><span class="rank">01</span> MEET NEXT</div>
+              <div class="person-line">
+                <span class="avatar avatar-lena">LO</span>
+                <div>
+                  <h3>Lena Ortiz</h3>
+                  <p>Developer Advocate · Deepgram</p>
+                </div>
+                <span class="match">94% fit</span>
+              </div>
+              <p class="reason">You both care about low-latency voice agents. She mentioned their LA team and offered to review your streaming architecture.</p>
+              <div class="topic-row"><span>voice agents</span><span>AI infra</span><span>Los Angeles</span></div>
+              <div class="card-actions">
+                <button class="primary-action" data-action="prep" data-person="lena">Prep me <span>→</span></button>
+                <button class="icon-action" aria-label="More actions">•••</button>
+              </div>
+            </article>
+
+            <article class="priority-card">
+              <div class="card-kicker"><span class="rank">02</span> FOLLOW UP</div>
+              <div class="person-line">
+                <span class="avatar avatar-theo">TB</span>
+                <div>
+                  <h3>Theo Brooks</h3>
+                  <p>Solutions Engineer · ElevenLabs</p>
+                </div>
+              </div>
+              <p class="reason">You promised to send a 30-second demo after implementing interruption handling.</p>
+              <div class="due-line"><span>↳</span> Due tonight · 9:00 PM</div>
+              <button class="text-action" data-action="draft" data-person="theo">Draft follow-up <span>↗</span></button>
+            </article>
+
+            <article class="priority-card">
+              <div class="card-kicker"><span class="rank">03</span> MAKE AN INTRO</div>
+              <div class="intro-avatars">
+                <span class="avatar avatar-mina">MP</span>
+                <span class="bridge-line"><i></i>82%<i></i></span>
+                <span class="avatar avatar-ravi">RS</span>
+              </div>
+              <h3>Mina Park <span>×</span> Ravi Shah</h3>
+              <p class="reason">Mina is prototyping agent developer tools; Ravi builds serverless Postgres infrastructure. Their interests overlap around AI-native backends.</p>
+              <button class="text-action" data-action="intro">Write introduction <span>↗</span></button>
+            </article>
+          </div>
+        </section>
+
+        <section class="memory-section" id="memorySection">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">RELATIONSHIP MEMORY</p>
+              <h2>The threads you’re building</h2>
+            </div>
+            <div class="view-toggle" role="group" aria-label="Memory view">
+              <button class="active" data-memory-view="map">Map</button>
+              <button data-memory-view="list">People</button>
+            </div>
+          </div>
+          <div class="memory-map" id="mapView" aria-label="Map of relationship connections">
+            <svg class="map-lines" viewBox="0 0 900 420" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M445 205 C365 150, 245 105, 155 85" />
+              <path d="M445 205 C540 135, 655 88, 748 82" />
+              <path d="M445 205 C350 230, 245 286, 150 332" />
+              <path d="M445 205 C545 235, 655 290, 755 332" />
+              <path d="M445 205 C445 260, 455 310, 458 360" />
+              <path class="secondary" d="M155 85 C350 30, 590 30, 748 82" />
+              <path class="secondary" d="M150 332 C305 380, 600 385, 755 332" />
+            </svg>
+            <button class="map-node node-self" style="--x:49%;--y:49%" data-person="maya"><span class="avatar avatar-self">MJ</span><strong>You</strong><small>applied AI · SWE</small></button>
+            <button class="map-node" style="--x:17%;--y:20%" data-person="lena"><span class="avatar avatar-lena">LO</span><strong>Lena Ortiz</strong><small>voice · infra · LA</small></button>
+            <button class="map-node" style="--x:82%;--y:19%" data-person="theo"><span class="avatar avatar-theo">TB</span><strong>Theo Brooks</strong><small>voice agents · DX</small></button>
+            <button class="map-node" style="--x:16%;--y:79%" data-person="mina"><span class="avatar avatar-mina">MP</span><strong>Mina Park</strong><small>agents · devtools</small></button>
+            <button class="map-node" style="--x:83%;--y:79%" data-person="ravi"><span class="avatar avatar-ravi">RS</span><strong>Ravi Shah</strong><small>databases · hiring</small></button>
+            <button class="map-node small-node" style="--x:50%;--y:86%" data-person="jordan"><span class="avatar avatar-jordan">JL</span><strong>Jordan Lee</strong><small>student tools</small></button>
+          </div>
+          <div class="people-list hidden" id="peopleList"></div>
+        </section>
+
+        <section class="connections-view hidden" id="peopleView">
+          <div class="section-heading">
+            <div><p class="eyebrow">PEOPLE</p><h2>Everyone you met, with the context intact.</h2></div>
+            <label class="search-field"><span>⌕</span><input id="peopleSearch" placeholder="Search people, topics, companies…" /></label>
+          </div>
+          <div class="people-directory" id="peopleDirectory"></div>
+        </section>
+
+        <section class="connections-view hidden" id="conversationsView">
+          <div class="section-heading">
+            <div><p class="eyebrow">CONVERSATIONS</p><h2>What was said—and what it means now.</h2></div>
+          </div>
+          <div class="conversation-list" id="conversationList"></div>
+        </section>
+      </main>
+    </div>
+
+    <div class="backdrop hidden" id="backdrop"></div>
+    <aside class="capture-drawer" id="captureDrawer" aria-hidden="true" aria-labelledby="captureTitle">
+      <div class="drawer-head">
+        <div><p class="eyebrow">NEW MEMORY</p><h2 id="captureTitle">What should I remember?</h2></div>
+        <button class="close-button" id="closeCapture" aria-label="Close capture">×</button>
+      </div>
+      <div class="capture-tabs" role="tablist">
+        <button class="active" data-capture-mode="transcript" role="tab">Transcript</button>
+        <button data-capture-mode="voice" role="tab">Voice note</button>
+        <button data-capture-mode="document" role="tab">Document</button>
+      </div>
+      <div class="capture-content" id="transcriptCapture">
+        <label for="transcriptInput">Paste a conversation or rough notes</label>
+        <textarea id="transcriptInput">I met Amara Chen from Vercel near the sponsor booths. She works on developer experience for AI apps and is based in San Francisco, but her team is remote-friendly. She suggested I look at their AI SDK streaming helpers and said she'd introduce me to an engineer working on tool calling. I said I would send our demo after judging.</textarea>
+        <div class="capture-meta">
+          <label>Date <input type="text" value="Today, 7:38 PM" /></label>
+          <label>Source <select><option>In-person conversation</option><option>Quick note</option><option>Imported transcript</option></select></label>
+        </div>
+        <div class="privacy-note"><span>⌾</span><p><strong>Private by default.</strong> You control what enters your memory and can delete it at any time.</p></div>
+        <button class="process-button" id="processMemory">Understand this memory <span>→</span></button>
+      </div>
+      <div class="voice-capture hidden" id="voiceCapture">
+        <button class="record-orb" id="recordOrb" aria-label="Start voice recording"><span></span></button>
+        <h3>Tap to record a quick memory</h3>
+        <p>Deepgram will transcribe it; BridgeOS will identify people, topics, and promises.</p>
+      </div>
+      <div class="document-capture hidden" id="documentCapture">
+        <div class="drop-zone"><span>◆</span><h3>Bring in context from Dropbox</h3><p>Event guides, sponsor docs, resumes, and notes become part of your searchable memory.</p><button id="mockDropbox">Choose from Dropbox</button></div>
+      </div>
+      <div class="processing-state hidden" id="processingState">
+        <div class="processing-pulse"><i></i></div>
+        <h3>Building relationship memory…</h3>
+        <ul><li class="done">Transcript understood</li><li class="done">Person and organization identified</li><li>Finding connections and commitments</li></ul>
+      </div>
+      <div class="memory-result hidden" id="memoryResult">
+        <div class="success-mark">✓</div>
+        <p class="eyebrow">MEMORY ADDED</p>
+        <h3>Amara Chen · Vercel</h3>
+        <p>BridgeOS connected this conversation to your interests in AI developer tools and remote software roles.</p>
+        <div class="result-grid"><span><small>TOPICS</small>AI SDK, streaming, DX</span><span><small>COMMITMENT</small>Send demo after judging</span><span><small>OPPORTUNITY</small>Warm intro to tool-calling engineer</span></div>
+        <button class="process-button" id="finishCapture">View updated memory <span>→</span></button>
+      </div>
+    </aside>
+
+    <aside class="detail-drawer" id="detailDrawer" aria-hidden="true" aria-labelledby="detailName">
+      <div class="drawer-head"><p class="eyebrow">PERSON MEMORY</p><button class="close-button" id="closeDetail" aria-label="Close person detail">×</button></div>
+      <div id="detailContent"></div>
+    </aside>
+
+    <div class="composer hidden" id="composer" role="dialog" aria-modal="true" aria-labelledby="composerTitle">
+      <div class="composer-head"><div><p class="eyebrow">READY TO SEND</p><h2 id="composerTitle">Contextual follow-up</h2></div><button id="closeComposer" aria-label="Close message">×</button></div>
+      <div class="message-to" id="messageTo"></div>
+      <textarea id="messageText"></textarea>
+      <div class="composer-foot"><span id="draftEvidence">Grounded in 2 memories</span><div><button class="secondary-button" id="copyDraft">Copy</button><button class="send-draft" id="sendDraft">Mark as sent <span>↗</span></button></div></div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
