@@ -14,7 +14,7 @@
       type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23ecff6b'/%3E%3Cpath d='M18 39c7-15 21-15 28 0M18 25h7m14 0h7' fill='none' stroke='%2310141d' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=3" />
   </head>
   <body>
     <div class="app-shell">
@@ -32,12 +32,12 @@
           <button class="nav-item" data-view="people">
             <span class="nav-icon" aria-hidden="true">◎</span>
             People
-            <span class="nav-count">6</span>
+            <span class="nav-count" id="peopleCount">6</span>
           </button>
           <button class="nav-item" data-view="conversations">
             <span class="nav-icon" aria-hidden="true">◫</span>
             Conversations
-            <span class="nav-count">8</span>
+            <span class="nav-count" id="conversationCount">8</span>
           </button>
         </nav>
 
@@ -46,12 +46,12 @@
           <button class="source-item">
             <span class="source-glyph deepgram">D</span>
             Deepgram
-            <span class="status-dot" title="Connected"></span>
+            <span class="source-state" title="Demo data source">demo</span>
           </button>
           <button class="source-item">
             <span class="source-glyph dropbox">◆</span>
             Dropbox
-            <span class="status-dot" title="Connected"></span>
+            <span class="source-state" title="Demo data source">demo</span>
           </button>
           <button class="source-item">
             <span class="source-glyph manual">+</span>
@@ -67,7 +67,7 @@
             <span class="health-live">Live</span>
           </div>
           <div class="health-bar"><i></i></div>
-          <p>14 new connections understood today</p>
+          <p><span id="connectionCount">14</span> new connections understood today</p>
         </div>
         <button class="profile-button" aria-label="Open profile">
           <span class="avatar avatar-self">MJ</span>
@@ -125,17 +125,37 @@
           <div id="answerBody"></div>
         </section>
 
+        <section class="change-panel hidden" id="changePanel" aria-live="polite">
+          <div class="change-mark" aria-hidden="true">↗</div>
+          <div class="change-copy">
+            <p class="eyebrow">MEMORY UPDATED · 3 NEW LINKS</p>
+            <h2>Amara opened a warm path to Vercel’s tool-calling team.</h2>
+            <p>This new conversation now outranks a cold booth visit: it matches your applied-AI interests, remote preference, and a promise you made tonight.</p>
+            <div class="reasoning-trace" aria-label="How BridgeOS reached this recommendation">
+              <span><small>CONVERSATION</small>Amara · Vercel</span>
+              <b>＋</b>
+              <span><small>YOUR GOAL</small>Applied AI · remote</span>
+              <b>→</b>
+              <span class="trace-result"><small>NEXT ACTION</small>Send demo + ask for intro</span>
+            </div>
+          </div>
+          <div class="change-actions">
+            <button class="primary-action" data-question="What changed after meeting Amara?">Explain why <span>→</span></button>
+            <button class="quiet-action" data-action="draft" data-person="amara">Draft follow-up</button>
+          </div>
+        </section>
+
         <section class="briefing" id="todayView">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">YOUR EVENING BRIEF</p>
-              <h2>Two hours left. Three high-signal moves.</h2>
+              <p class="eyebrow" id="briefingEyebrow">YOUR EVENING BRIEF</p>
+              <h2 id="briefingTitle">Two hours left. Three high-signal moves.</h2>
             </div>
             <div class="event-clock"><span></span> Event ends 10:00 PM</div>
           </div>
 
           <div class="priority-grid">
-            <article class="priority-card priority-main">
+            <article class="priority-card priority-main" id="topPriority">
               <div class="card-kicker"><span class="rank">01</span> MEET NEXT</div>
               <div class="person-line">
                 <span class="avatar avatar-lena">LO</span>
@@ -230,15 +250,15 @@
     </div>
 
     <div class="backdrop hidden" id="backdrop"></div>
-    <aside class="capture-drawer" id="captureDrawer" aria-hidden="true" aria-labelledby="captureTitle">
+    <aside class="capture-drawer" id="captureDrawer" aria-hidden="true" aria-labelledby="captureTitle" inert>
       <div class="drawer-head">
         <div><p class="eyebrow">NEW MEMORY</p><h2 id="captureTitle">What should I remember?</h2></div>
         <button class="close-button" id="closeCapture" aria-label="Close capture">×</button>
       </div>
       <div class="capture-tabs" role="tablist">
-        <button class="active" data-capture-mode="transcript" role="tab">Transcript</button>
-        <button data-capture-mode="voice" role="tab">Voice note</button>
-        <button data-capture-mode="document" role="tab">Document</button>
+        <button class="active" data-capture-mode="transcript" role="tab" aria-selected="true">Transcript</button>
+        <button data-capture-mode="voice" role="tab" aria-selected="false">Voice note</button>
+        <button data-capture-mode="document" role="tab" aria-selected="false">Document</button>
       </div>
       <div class="capture-content" id="transcriptCapture">
         <label for="transcriptInput">Paste a conversation or rough notes</label>
@@ -269,11 +289,11 @@
         <h3>Amara Chen · Vercel</h3>
         <p>BridgeOS connected this conversation to your interests in AI developer tools and remote software roles.</p>
         <div class="result-grid"><span><small>TOPICS</small>AI SDK, streaming, DX</span><span><small>COMMITMENT</small>Send demo after judging</span><span><small>OPPORTUNITY</small>Warm intro to tool-calling engineer</span></div>
-        <button class="process-button" id="finishCapture">View updated memory <span>→</span></button>
+        <button class="process-button" id="finishCapture">See what this changed <span>→</span></button>
       </div>
     </aside>
 
-    <aside class="detail-drawer" id="detailDrawer" aria-hidden="true" aria-labelledby="detailName">
+    <aside class="detail-drawer" id="detailDrawer" aria-hidden="true" aria-labelledby="detailName" inert>
       <div class="drawer-head"><p class="eyebrow">PERSON MEMORY</p><button class="close-button" id="closeDetail" aria-label="Close person detail">×</button></div>
       <div id="detailContent"></div>
     </aside>
@@ -286,6 +306,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js"></script>
+    <script src="./app.js?v=3"></script>
   </body>
 </html>
