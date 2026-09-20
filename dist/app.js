@@ -57,6 +57,10 @@ let latestMemory = null;
 let pendingMemory = null;
 let latestBackendState = null;
 let backendMode = "offline";
+let sponsorStatus = {};
+let deepgramRecorder = null;
+let deepgramStream = null;
+let elevenSession = null;
 
 const els = Object.fromEntries([
   "backdrop", "captureDrawer", "detailDrawer", "composer", "toast", "askInput", "answerPanel", "answerTitle", "answerBody",
@@ -81,15 +85,30 @@ function setBackendStatus(mode, model = "") {
   backendMode = mode;
   const status = document.getElementById("backendStatus");
   status.className = `backend-status ${mode}`;
-  if (mode === "openai") {
+  if (mode === "meta") {
+    status.innerHTML = `<i></i> Meta AI live`;
+    status.title = `Meta Model API · ${model}`;
+  } else if (mode === "openai") {
     status.innerHTML = `<i></i> AI backend live`;
     status.title = `OpenAI Responses API · ${model}`;
   } else if (mode === "local") {
     status.innerHTML = `<i></i> Local backend`;
-    status.title = "Server-backed persistence with deterministic local reasoning. Add OPENAI_API_KEY to .env for model-backed intelligence.";
+    status.title = "Server-backed persistence with deterministic local reasoning. Add Meta or OpenAI credentials to .env for model-backed intelligence.";
   } else {
     status.innerHTML = `<i></i> Backend offline`;
     status.title = "Start BridgeOS with node server.mjs.";
+  }
+}
+
+function updateSponsorStatus(integrations = {}) {
+  sponsorStatus = integrations;
+  const mapping = { meta: "metaState", deepgram: "deepgramState", elevenlabs: "elevenlabsState", elastic: "elasticState", dropbox: "dropboxState" };
+  for (const [name, id] of Object.entries(mapping)) {
+    const element = document.getElementById(id);
+    const configured = Boolean(integrations[name]?.configured);
+    element.textContent = configured ? "live" : "off";
+    element.classList.toggle("live", configured);
+    element.title = configured ? `${name} configured on the backend` : `Add ${name} credentials to .env`;
   }
 }
 
@@ -243,7 +262,8 @@ async function draft(type, id) {
     const result = await api("/api/drafts", { method: "POST", body: JSON.stringify({ personId: id }) });
     document.getElementById("messageTo").textContent = `To: ${result.draft.to}`;
     document.getElementById("messageText").value = result.draft.text;
-    document.getElementById("draftEvidence").textContent = `${result.draft.evidence} · ${result.provider === "openai" ? "AI generated" : "local backend"}`;
+    const source = result.provider === "meta" ? "Meta generated" : result.provider === "openai" ? "OpenAI generated" : "local backend";
+    document.getElementById("draftEvidence").textContent = `${result.draft.evidence} · ${source}`;
   } catch (error) {
     closeOverlays();
     toast(error.message);
@@ -262,7 +282,9 @@ async function answerQuestion(question) {
     const result = await api("/api/ask", { method: "POST", body: JSON.stringify({ question: cleanQuestion }) });
     const { title, lead, items, evidence } = result.answer;
     els.answerTitle.textContent = title;
-    els.answerBody.innerHTML = `<p>${escapeHtml(lead)}</p><div class="answer-list">${items.map((item, i) => `<div class="answer-item"><span class="answer-num">0${i + 1}</span><div><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.detail)}</small></div><button data-answer-person="${escapeHtml(item.personId)}">Open →</button></div>`).join("")}</div><div class="evidence-line">${evidence.map(item => `<button class="evidence-chip">⌁ ${escapeHtml(item)}</button>`).join("")}<button class="evidence-chip">${result.provider === "openai" ? "✦ OpenAI" : "⌁ Local backend"}</button></div>`;
+    const providerLabel = result.provider === "meta" ? "✦ Meta" : result.provider === "openai" ? "✦ OpenAI" : "⌁ Local backend";
+    const retrievalLabel = result.retrieval === "elastic" ? `<button class="evidence-chip">⌕ Elastic retrieval</button>` : "";
+    els.answerBody.innerHTML = `<p>${escapeHtml(lead)}</p><div class="answer-list">${items.map((item, i) => `<div class="answer-item"><span class="answer-num">0${i + 1}</span><div><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.detail)}</small></div><button data-answer-person="${escapeHtml(item.personId)}">Open →</button></div>`).join("")}</div><div class="evidence-line">${evidence.map(item => `<button class="evidence-chip">⌁ ${escapeHtml(item)}</button>`).join("")}${retrievalLabel}<button class="evidence-chip">${providerLabel}</button></div>`;
   } catch (error) {
     els.answerTitle.textContent = "The backend needs attention";
     els.answerBody.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
@@ -288,6 +310,7 @@ async function hydrateBackend() {
   try {
     const health = await api("/api/health");
     setBackendStatus(health.mode, health.model);
+    updateSponsorStatus(health.integrations || {});
     const state = await api("/api/state");
     latestBackendState = state;
     if (state.memories.length) {
@@ -296,6 +319,7 @@ async function hydrateBackend() {
     }
   } catch {
     setBackendStatus("offline");
+    updateSponsorStatus({});
   }
 }
 
@@ -360,6 +384,205 @@ function registerBridgeTools() {
   }
 }
 
+function showTranscriptCapture(transcript, sourceLabel) {
+  document.querySelector('[data-capture-mode="transcript"]').click();
+  document.getElementById("transcriptInput").value = transcript;
+  document.querySelector(".capture-meta select").value = sourceLabel;
+  document.getElementById("transcriptInput").focus();
+}
+
+async function toggleDeepgramRecording() {
+  const button = document.getElementById("recordOrb");
+  const title = document.getElementById("voiceCaptureTitle");
+  const copy = document.getElementById("voiceCaptureCopy");
+  if (deepgramRecorder?.state === "recording") {
+    deepgramRecorder.stop();
+    button.classList.remove("recording");
+    button.setAttribute("aria-label", "Start voice recording");
+    title.textContent = "Transcribing with Deepgram…";
+    copy.textContent = "Speaker turns will feed the same relationship-memory pipeline.";
+    return;
+  }
+  if (!sponsorStatus.deepgram?.configured) return toast("Add DEEPGRAM_API_KEY to .env first");
+  try {
+    deepgramStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const preferred = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+    const chunks = [];
+    deepgramRecorder = new MediaRecorder(deepgramStream, { mimeType: preferred });
+    deepgramRecorder.addEventListener("dataavailable", event => { if (event.data.size) chunks.push(event.data); });
+    deepgramRecorder.addEventListener("stop", async () => {
+      try {
+        deepgramStream?.getTracks().forEach(track => track.stop());
+        const audio = new Blob(chunks, { type: deepgramRecorder.mimeType || preferred });
+        const response = await fetch("/api/deepgram/transcribe", { method: "POST", headers: { "Content-Type": audio.type }, body: audio });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Deepgram transcription failed.");
+        showTranscriptCapture(result.transcript, "Deepgram voice note");
+        toast(`Deepgram captured ${result.utterances || 1} speaker turn${result.utterances === 1 ? "" : "s"}`);
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        deepgramRecorder = null;
+        deepgramStream = null;
+        button.classList.remove("recording");
+        title.textContent = "Tap to record a quick memory";
+        copy.textContent = "Deepgram will transcribe it; BridgeOS will identify people, topics, and promises.";
+      }
+    }, { once: true });
+    deepgramRecorder.start(500);
+    button.classList.add("recording");
+    button.setAttribute("aria-label", "Stop voice recording");
+    title.textContent = "Recording conversation…";
+    copy.textContent = "Tap again when you are finished.";
+  } catch (error) {
+    toast(error.name === "NotAllowedError" ? "Microphone access was not allowed" : error.message);
+  }
+}
+
+async function browseDropbox() {
+  const container = document.getElementById("dropboxFiles");
+  if (!sponsorStatus.dropbox?.configured) return toast("Add DROPBOX_ACCESS_TOKEN to .env first");
+  container.classList.remove("hidden");
+  container.innerHTML = "<p>Loading Dropbox files…</p>";
+  try {
+    const result = await api("/api/dropbox/files");
+    container.innerHTML = result.files.length
+      ? result.files.map(file => `<button data-dropbox-path="${escapeHtml(file.path)}"><span>${escapeHtml(file.name)}</span><small>${Math.max(1, Math.round(file.size / 1024))} KB</small></button>`).join("")
+      : "<p>No supported files found in this Dropbox folder.</p>";
+  } catch (error) {
+    container.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function importDropbox(path) {
+  const container = document.getElementById("dropboxFiles");
+  container.innerHTML = "<p>Importing file context…</p>";
+  try {
+    const result = await api("/api/dropbox/import", { method: "POST", body: JSON.stringify({ path }) });
+    showTranscriptCapture(`Dropbox file: ${result.name}\n\n${result.text}`, "Dropbox document");
+    toast(`${result.name} imported from Dropbox`);
+  } catch (error) {
+    container.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, character => character.charCodeAt(0));
+}
+
+function downsampleToPcm16(samples, sourceRate, targetRate = 16000) {
+  const ratio = sourceRate / targetRate;
+  const length = Math.max(1, Math.round(samples.length / ratio));
+  const pcm = new Int16Array(length);
+  for (let index = 0; index < length; index++) {
+    const start = Math.floor(index * ratio);
+    const end = Math.min(samples.length, Math.floor((index + 1) * ratio));
+    let total = 0;
+    for (let cursor = start; cursor < end; cursor++) total += samples[cursor];
+    const value = Math.max(-1, Math.min(1, total / Math.max(1, end - start)));
+    pcm[index] = value < 0 ? value * 0x8000 : value * 0x7fff;
+  }
+  return new Uint8Array(pcm.buffer);
+}
+
+function playElevenAudio(base64Audio) {
+  const session = elevenSession;
+  if (!session?.outputContext) return;
+  const bytes = base64ToBytes(base64Audio);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const frameCount = Math.floor(bytes.byteLength / 2);
+  const audioBuffer = session.outputContext.createBuffer(1, frameCount, session.outputRate || 16000);
+  const channel = audioBuffer.getChannelData(0);
+  for (let index = 0; index < frameCount; index++) channel[index] = view.getInt16(index * 2, true) / 32768;
+  const source = session.outputContext.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(session.outputContext.destination);
+  const startAt = Math.max(session.outputContext.currentTime, session.nextPlayTime || 0);
+  source.start(startAt);
+  session.nextPlayTime = startAt + audioBuffer.duration;
+}
+
+async function stopElevenConversation(message = "Voice agent stopped") {
+  const session = elevenSession;
+  elevenSession = null;
+  document.getElementById("voiceButton").classList.remove("listening");
+  document.getElementById("voiceButton").setAttribute("aria-pressed", "false");
+  if (!session) return;
+  session.processor?.disconnect();
+  session.inputSource?.disconnect();
+  session.stream?.getTracks().forEach(track => track.stop());
+  if (session.socket?.readyState === WebSocket.OPEN) session.socket.close(1000, "User ended conversation");
+  await Promise.allSettled([session.inputContext?.close(), session.outputContext?.close()]);
+  if (message) toast(message);
+}
+
+async function startElevenConversation() {
+  if (elevenSession) return stopElevenConversation();
+  if (!sponsorStatus.elevenlabs?.configured) return toast("Add ELEVENLABS_API_KEY and ELEVENLABS_AGENT_ID to .env first");
+  const button = document.getElementById("voiceButton");
+  try {
+    const [{ signedUrl }, state, stream] = await Promise.all([
+      api("/api/elevenlabs/signed-url"),
+      api("/api/state"),
+      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+    ]);
+    const inputContext = new AudioContext();
+    const outputContext = new AudioContext();
+    const socket = new WebSocket(signedUrl);
+    const inputSource = inputContext.createMediaStreamSource(stream);
+    const processor = inputContext.createScriptProcessor(4096, 1, 1);
+    const mute = inputContext.createGain();
+    mute.gain.value = 0;
+    inputSource.connect(processor);
+    processor.connect(mute);
+    mute.connect(inputContext.destination);
+    elevenSession = { socket, stream, inputContext, outputContext, inputSource, processor, mute, outputRate: 16000, nextPlayTime: 0, context: state };
+    processor.onaudioprocess = event => {
+      if (socket.readyState !== WebSocket.OPEN) return;
+      const pcm = downsampleToPcm16(event.inputBuffer.getChannelData(0), inputContext.sampleRate, 16000);
+      socket.send(JSON.stringify({ user_audio_chunk: bytesToBase64(pcm) }));
+    };
+    socket.addEventListener("open", () => {
+      button.classList.add("listening");
+      button.setAttribute("aria-pressed", "true");
+      socket.send(JSON.stringify({ type: "contextual_update", text: `BridgeOS relationship memory: ${JSON.stringify({ goals: ["applied AI", "software engineering", "remote or Los Angeles roles"], memories: state.memories })}` }));
+      toast("ElevenLabs voice agent is listening");
+    });
+    socket.addEventListener("message", async event => {
+      const message = JSON.parse(event.data);
+      if (message.type === "conversation_initiation_metadata") {
+        const format = message.conversation_initiation_metadata_event?.agent_output_audio_format || "pcm_16000";
+        elevenSession.outputRate = Number(format.match(/pcm_(\d+)/)?.[1] || 16000);
+      } else if (message.type === "audio") {
+        playElevenAudio(message.audio_event?.audio_base_64);
+      } else if (message.type === "user_transcript") {
+        els.askInput.value = message.user_transcription_event?.user_transcript || els.askInput.value;
+      } else if (message.type === "agent_response") {
+        els.answerPanel.classList.remove("hidden");
+        els.answerTitle.textContent = "ElevenLabs voice agent";
+        els.answerBody.innerHTML = `<p>${escapeHtml(message.agent_response_event?.agent_response || "")}</p><div class="evidence-line"><button class="evidence-chip">◉ Live voice</button><button class="evidence-chip">⌁ BridgeOS context</button></div>`;
+      } else if (message.type === "ping") {
+        socket.send(JSON.stringify({ type: "pong", event_id: message.ping_event?.event_id }));
+      } else if (message.type === "client_tool_call" && message.client_tool_call?.tool_name === "ask_bridge_memory") {
+        const result = await api("/api/ask", { method: "POST", body: JSON.stringify({ question: message.client_tool_call.parameters?.question || "Who should I follow up with?" }) });
+        socket.send(JSON.stringify({ type: "client_tool_result", tool_call_id: message.client_tool_call.tool_call_id, result: JSON.stringify(result.answer), is_error: false }));
+      }
+    });
+    socket.addEventListener("close", () => { if (elevenSession?.socket === socket) stopElevenConversation(""); });
+    socket.addEventListener("error", () => { if (elevenSession?.socket === socket) stopElevenConversation("ElevenLabs voice connection failed"); });
+  } catch (error) {
+    await stopElevenConversation("");
+    toast(error.name === "NotAllowedError" ? "Microphone access was not allowed" : error.message);
+  }
+}
+
 document.addEventListener("click", e => {
   const nav = e.target.closest("[data-view]"); if (nav) setView(nav.dataset.view);
   const question = e.target.closest("[data-question]"); if (question) answerQuestion(question.dataset.question);
@@ -368,6 +591,7 @@ document.addEventListener("click", e => {
   const action = e.target.closest("[data-action]");
   if (action) action.dataset.action === "intro" ? draft("intro") : action.dataset.action === "prep" ? openPerson(action.dataset.person) : draft("followup", action.dataset.person);
   const detailDraft = e.target.closest("[data-detail-draft]"); if (detailDraft) draft("followup", detailDraft.dataset.detailDraft);
+  const dropboxFile = e.target.closest("[data-dropbox-path]"); if (dropboxFile) importDropbox(dropboxFile.dataset.dropboxPath);
 });
 
 document.getElementById("captureButton").addEventListener("click", () => { resetCapture(); showOverlay(els.captureDrawer); });
@@ -382,19 +606,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape") closeOverlays();
 });
 
-document.getElementById("voiceButton").addEventListener("click", e => {
-  const button = e.currentTarget;
-  const active = button.classList.toggle("listening");
-  button.setAttribute("aria-pressed", String(active));
-  if (active) {
-    els.askInput.value = "Listening…";
-    setTimeout(() => {
-      button.classList.remove("listening"); button.setAttribute("aria-pressed", "false");
-      answerQuestion("Who should I follow up with tonight?");
-      toast("Voice captured with Deepgram demo mode");
-    }, 1700);
-  }
-});
+document.getElementById("voiceButton").addEventListener("click", startElevenConversation);
 
 document.querySelectorAll("[data-memory-view]").forEach(button => button.addEventListener("click", () => {
   document.querySelectorAll("[data-memory-view]").forEach(b => b.classList.toggle("active", b === button));
@@ -434,7 +646,9 @@ document.getElementById("processMemory").addEventListener("click", async () => {
     pendingMemory = result.memory;
     latestBackendState = result.state;
     document.querySelectorAll("#processingState li").forEach(item => item.classList.add("done"));
-    document.getElementById("memoryProvider").textContent = result.provider === "openai" ? "MEMORY ADDED · OPENAI EXTRACTED" : "MEMORY ADDED · LOCAL BACKEND";
+    const providerLabel = result.provider === "meta" ? "META EXTRACTED" : result.provider === "openai" ? "OPENAI EXTRACTED" : "LOCAL BACKEND";
+    const elasticLabel = result.elastic?.status === "indexed" ? " · ELASTIC INDEXED" : "";
+    document.getElementById("memoryProvider").textContent = `MEMORY ADDED · ${providerLabel}${elasticLabel}`;
     document.getElementById("memoryPerson").textContent = `${result.memory.personName} · ${result.memory.company}`;
     document.getElementById("memorySummary").textContent = result.memory.summary;
     document.getElementById("memoryTopics").textContent = result.memory.topics.join(", ");
@@ -462,8 +676,8 @@ document.getElementById("finishCapture").addEventListener("click", () => {
   els.changePanel.scrollIntoView({ behavior: "smooth", block: "center" });
   toast(`${pendingMemory.personName} added · brief recalculated`);
 });
-document.getElementById("recordOrb").addEventListener("click", e => { e.currentTarget.classList.toggle("recording"); toast("Voice note captured in demo mode"); });
-document.getElementById("mockDropbox").addEventListener("click", () => toast("Dropbox picker ready when API credentials are connected"));
+document.getElementById("recordOrb").addEventListener("click", toggleDeepgramRecording);
+document.getElementById("mockDropbox").addEventListener("click", browseDropbox);
 document.getElementById("closeAnswer").addEventListener("click", () => els.answerPanel.classList.add("hidden"));
 document.getElementById("copyDraft").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(document.getElementById("messageText").value); toast("Draft copied"); }

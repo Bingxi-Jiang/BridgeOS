@@ -14,7 +14,7 @@
       type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23ecff6b'/%3E%3Cpath d='M18 39c7-15 21-15 28 0M18 25h7m14 0h7' fill='none' stroke='%2310141d' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="./styles.css?v=4" />
+    <link rel="stylesheet" href="./styles.css?v=5" />
   </head>
   <body>
     <div class="app-shell">
@@ -46,18 +46,25 @@
           <button class="source-item">
             <span class="source-glyph deepgram">D</span>
             Deepgram
-            <span class="source-state" title="Demo data source">demo</span>
+            <span class="source-state" id="deepgramState" title="Not configured">off</span>
           </button>
           <button class="source-item">
             <span class="source-glyph dropbox">◆</span>
             Dropbox
-            <span class="source-state" title="Demo data source">demo</span>
+            <span class="source-state" id="dropboxState" title="Not configured">off</span>
           </button>
           <button class="source-item">
             <span class="source-glyph manual">+</span>
             Quick notes
             <span class="nav-count">3</span>
           </button>
+        </div>
+
+        <div class="sidebar-label integration-label">Intelligence</div>
+        <div class="integration-list" aria-label="Sponsor integration status">
+          <span>Meta <i class="source-state" id="metaState">off</i></span>
+          <span>ElevenLabs <i class="source-state" id="elevenlabsState">off</i></span>
+          <span>Elastic <i class="source-state" id="elasticState">off</i></span>
         </div>
 
         <div class="sidebar-spacer"></div>
@@ -268,18 +275,18 @@
         <textarea id="transcriptInput">I met Amara Chen from Vercel near the sponsor booths. She works on developer experience for AI apps and is based in San Francisco, but her team is remote-friendly. She suggested I look at their AI SDK streaming helpers and said she'd introduce me to an engineer working on tool calling. I said I would send our demo after judging.</textarea>
         <div class="capture-meta">
           <label>Date <input type="text" value="Today, 7:38 PM" /></label>
-          <label>Source <select><option>In-person conversation</option><option>Quick note</option><option>Imported transcript</option></select></label>
+          <label>Source <select><option>In-person conversation</option><option>Quick note</option><option>Imported transcript</option><option>Deepgram voice note</option><option>Dropbox document</option></select></label>
         </div>
         <div class="privacy-note"><span>⌾</span><p><strong>Private by default.</strong> You control what enters your memory and can delete it at any time.</p></div>
         <button class="process-button" id="processMemory">Understand this memory <span>→</span></button>
       </div>
       <div class="voice-capture hidden" id="voiceCapture">
         <button class="record-orb" id="recordOrb" aria-label="Start voice recording"><span></span></button>
-        <h3>Tap to record a quick memory</h3>
-        <p>Deepgram will transcribe it; BridgeOS will identify people, topics, and promises.</p>
+        <h3 id="voiceCaptureTitle">Tap to record a quick memory</h3>
+        <p id="voiceCaptureCopy">Deepgram will transcribe it; BridgeOS will identify people, topics, and promises.</p>
       </div>
       <div class="document-capture hidden" id="documentCapture">
-        <div class="drop-zone"><span>◆</span><h3>Bring in context from Dropbox</h3><p>Event guides, sponsor docs, resumes, and notes become part of your searchable memory.</p><button id="mockDropbox">Choose from Dropbox</button></div>
+        <div class="drop-zone"><span>◆</span><h3>Bring in context from Dropbox</h3><p>Text notes and event context become part of the same searchable memory.</p><button id="mockDropbox">Browse Dropbox</button><div class="dropbox-files hidden" id="dropboxFiles" aria-live="polite"></div></div>
       </div>
       <div class="processing-state hidden" id="processingState">
         <div class="processing-pulse"><i></i></div>
@@ -309,6 +316,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=4"></script>
+    <script src="./app.js?v=5"></script>
   </body>
 </html>
