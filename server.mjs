@@ -4,6 +4,17 @@ import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  callStructuredModel,
+  createElevenLabsSignedUrl,
+  downloadDropboxText,
+  indexElasticMemory,
+  integrationStatus,
+  listDropboxFiles,
+  resolveModelProvider,
+  searchElasticMemories,
+  transcribeDeepgram
+} from "./integrations.mjs";
 
 const APP_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const EMPTY_STORE = { version: 1, memories: [] };
@@ -108,43 +119,24 @@ async function readJson(req) {
   catch { throw Object.assign(new Error("Request body must be valid JSON."), { statusCode: 400 }); }
 }
 
+async function readRaw(req, limit = 25_000_000) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > limit) throw Object.assign(new Error("Request body is too large."), { statusCode: 413 });
+    chunks.push(chunk);
+  }
+  if (!chunks.length) throw Object.assign(new Error("Request body is empty."), { statusCode: 400 });
+  return Buffer.concat(chunks);
+}
+
 function slugify(value) {
   return String(value || "person").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 40) || "person";
 }
 
 function compact(value, max = 240) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
-}
-
-function extractResponseText(response) {
-  if (typeof response.output_text === "string" && response.output_text) return response.output_text;
-  for (const item of response.output || []) {
-    for (const content of item.content || []) {
-      if ((content.type === "output_text" || content.type === "text") && typeof content.text === "string") return content.text;
-    }
-  }
-  throw new Error("OpenAI returned no text output.");
-}
-
-async function callOpenAIJson(env, { name, schema, instructions, input }, fetchImpl = fetch) {
-  const apiKey = env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return null;
-  const response = await fetchImpl("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: env.OPENAI_MODEL || "gpt-5-mini",
-      store: false,
-      instructions,
-      input,
-      max_output_tokens: 1400,
-      text: { format: { type: "json_schema", name, strict: true, schema } }
-    }),
-    signal: AbortSignal.timeout(20_000)
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error?.message || `OpenAI request failed with ${response.status}.`);
-  return JSON.parse(extractResponseText(payload));
 }
 
 function localExtraction(transcript) {
@@ -210,12 +202,14 @@ function normalizeExtraction(raw, { transcript, dateLabel, sourceLabel, provider
 
 function stateFrom(store, env) {
   const added = store.memories.length;
+  const provider = resolveModelProvider(env);
   return {
     peopleCount: 6 + added,
     conversationCount: 8 + added,
     connectionCount: 14 + added * 3,
     memories: store.memories,
-    backend: { mode: env.OPENAI_API_KEY?.trim() ? "openai" : "local", model: env.OPENAI_MODEL || "gpt-5-mini", persistent: true }
+    backend: { mode: provider?.name || "local", model: provider?.model || "local", persistent: true },
+    integrations: integrationStatus(env)
   };
 }
 
@@ -271,7 +265,8 @@ export async function createBridgeServer(options = {}) {
   const staticDir = path.resolve(rootDir, "dist");
   const configuredDataFile = env.DATA_FILE || "./data/memory-store.json";
   const dataFile = path.isAbsolute(configuredDataFile) ? configuredDataFile : path.resolve(rootDir, configuredDataFile);
-  const openAIFetch = options.openAIFetch || fetch;
+  const modelFetch = options.modelFetch || options.openAIFetch || fetch;
+  const serviceFetch = options.serviceFetch || fetch;
   let store = structuredClone(EMPTY_STORE);
   let writeQueue = Promise.resolve();
 
@@ -293,42 +288,56 @@ export async function createBridgeServer(options = {}) {
 
   async function handleApi(req, res, url) {
     if (req.method === "GET" && url.pathname === "/api/health") {
-      return json(res, 200, { ok: true, ...stateFrom(store, env).backend });
+      return json(res, 200, { ok: true, ...stateFrom(store, env).backend, integrations: integrationStatus(env) });
     }
     if (req.method === "GET" && url.pathname === "/api/state") return json(res, 200, stateFrom(store, env));
+    if (req.method === "GET" && url.pathname === "/api/integrations") return json(res, 200, integrationStatus(env));
 
     if (req.method === "POST" && url.pathname === "/api/memories") {
       const body = await readJson(req);
       const transcript = compact(body.transcript, 10_000);
       if (transcript.length < 20) throw Object.assign(new Error("Add at least 20 characters of conversation context."), { statusCode: 400 });
-      const generated = await callOpenAIJson(env, {
+      const generated = await callStructuredModel(env, {
         name: "relationship_memory",
         schema: extractionSchema,
         instructions: "Extract one useful relationship memory. Be factual, concise, and grounded only in the transcript. Identify explicit commitments and opportunities without inventing details.",
         input: transcript
-      }, openAIFetch);
-      const provider = generated ? "openai" : "local";
-      const memory = normalizeExtraction(generated || localExtraction(transcript), { transcript, dateLabel: body.dateLabel, sourceLabel: body.sourceLabel, provider });
+      }, modelFetch);
+      const provider = generated?.provider || "local";
+      const memory = normalizeExtraction(generated?.value || localExtraction(transcript), { transcript, dateLabel: body.dateLabel, sourceLabel: body.sourceLabel, provider });
       const existing = store.memories.find(item => item.id === memory.id);
       if (!existing) {
         store.memories.push(memory);
         await persist();
       }
-      return json(res, existing ? 200 : 201, { stored: true, duplicate: Boolean(existing), provider, memory: existing || memory, state: stateFrom(store, env) });
+      let elastic = { status: "not_configured" };
+      if (integrationStatus(env).elastic.configured) {
+        try { elastic = { status: "indexed", ...(await indexElasticMemory(env, existing || memory, serviceFetch)) }; }
+        catch (error) { elastic = { status: "error", message: error.message }; }
+      }
+      return json(res, existing ? 200 : 201, { stored: true, duplicate: Boolean(existing), provider, memory: existing || memory, elastic, state: stateFrom(store, env) });
     }
 
     if (req.method === "POST" && url.pathname === "/api/ask") {
       const body = await readJson(req);
       const question = compact(body.question, 500);
       if (!question) throw Object.assign(new Error("Ask a question first."), { statusCode: 400 });
-      const context = { userGoals: ["applied AI", "software engineering", "remote or Los Angeles roles"], seedPeople, capturedMemories: store.memories };
-      const generated = await callOpenAIJson(env, {
+      let elasticHits = [];
+      let elasticError = null;
+      if (integrationStatus(env).elastic.configured) {
+        try { elasticHits = await searchElasticMemories(env, question, serviceFetch); }
+        catch (error) { elasticError = error.message; }
+      }
+      const context = { userGoals: ["applied AI", "software engineering", "remote or Los Angeles roles"], seedPeople, capturedMemories: store.memories, elasticRetrievedMemories: elasticHits };
+      const generated = await callStructuredModel(env, {
         name: "grounded_relationship_answer",
         schema: answerSchema,
         instructions: "Answer as BridgeOS, a concise relationship-memory assistant. Use only the supplied context. Recommend concrete next actions and cite short evidence labels. personId must match a supplied id.",
         input: `Question: ${question}\n\nContext:\n${JSON.stringify(context)}`
-      }, openAIFetch);
-      return json(res, 200, { provider: generated ? "openai" : "local", answer: generated || localAnswer(question, store) });
+      }, modelFetch);
+      const answer = generated?.value || localAnswer(question, store);
+      if (elasticHits.length) answer.evidence = [...answer.evidence.slice(0, 3), `Elastic · ${elasticHits.length} retrieved memories`];
+      return json(res, 200, { provider: generated?.provider || "local", retrieval: elasticHits.length ? "elastic" : "json", elasticError, answer });
     }
 
     if (req.method === "POST" && url.pathname === "/api/drafts") {
@@ -336,13 +345,40 @@ export async function createBridgeServer(options = {}) {
       const personId = compact(body.personId, 80);
       const memory = store.memories.find(item => item.personId === personId);
       const context = memory || seedPeople.find(person => person.id === personId) || null;
-      const generated = await callOpenAIJson(env, {
+      const generated = await callStructuredModel(env, {
         name: "relationship_follow_up",
         schema: draftSchema,
         instructions: "Draft a warm, concise post-hackathon follow-up using only the supplied relationship context. Include the specific commitment or next action. Do not claim that a message was sent.",
         input: JSON.stringify({ recipient: context, requestedTone: "warm, specific, concise" })
-      }, openAIFetch);
-      return json(res, 200, { provider: generated ? "openai" : "local", draft: generated || localDraft(personId, store) });
+      }, modelFetch);
+      return json(res, 200, { provider: generated?.provider || "local", draft: generated?.value || localDraft(personId, store) });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/deepgram/transcribe") {
+      const audio = await readRaw(req);
+      const result = await transcribeDeepgram(env, audio, req.headers["content-type"] || "audio/webm", serviceFetch);
+      return json(res, 200, result);
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/dropbox/files") {
+      const files = await listDropboxFiles(env, url.searchParams.get("path") || "", serviceFetch);
+      return json(res, 200, { files });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/dropbox/import") {
+      const body = await readJson(req);
+      return json(res, 200, await downloadDropboxText(env, body.path, serviceFetch));
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/elevenlabs/signed-url") {
+      return json(res, 200, await createElevenLabsSignedUrl(env, serviceFetch));
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/elastic/search") {
+      const body = await readJson(req);
+      const query = compact(body.query, 500);
+      if (!query) throw Object.assign(new Error("Provide a search query."), { statusCode: 400 });
+      return json(res, 200, { hits: await searchElasticMemories(env, query, serviceFetch) });
     }
 
     return json(res, 404, { error: "API route not found." });
@@ -365,7 +401,7 @@ export async function createBridgeServer(options = {}) {
       res.end(content);
     } catch (error) {
       const status = error.statusCode || (error.name === "TimeoutError" ? 504 : 500);
-      const publicMessage = status < 500 ? error.message : (env.OPENAI_API_KEY?.trim() ? "AI provider failed. Check OPENAI_API_KEY and OPENAI_MODEL." : "The backend could not complete this request.");
+      const publicMessage = status < 500 ? error.message : error.message || "The backend could not complete this request.";
       if (status >= 500) console.error(error);
       if (!res.headersSent) json(res, status, { error: publicMessage }); else res.end();
     }
@@ -379,7 +415,8 @@ async function main() {
   const port = Number(env.PORT || 4174);
   const host = env.HOST || "127.0.0.1";
   server.listen(port, host, () => {
-    const mode = env.OPENAI_API_KEY?.trim() ? `OpenAI (${env.OPENAI_MODEL || "gpt-5-mini"})` : "local fallback";
+    const provider = resolveModelProvider(env);
+    const mode = provider ? `${provider.name} (${provider.model})` : "local fallback";
     console.log(`BridgeOS running at http://${host}:${port} · ${mode}`);
   });
 }
