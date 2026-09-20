@@ -10,7 +10,8 @@ The MVP is deliberately narrow: capture one conversation, watch it change the re
 
 - Dependency-free Node.js HTTP backend serves the existing single-page interface and owns all new memory extraction, persistence, grounded Q&A, and follow-up drafting.
 - Captured memories are stored atomically in `data/memory-store.json`; the file is configurable through `.env` and ignored by Git.
-- When `OPENAI_API_KEY` is set, the backend uses the OpenAI Responses API with strict JSON schemas for extraction, answers, and drafts.
+- When `MODEL_API_KEY` or `OPENAI_API_KEY` is set, the backend uses Meta Model API or OpenAI Responses API with strict JSON schemas for extraction, answers, and drafts.
+- Deepgram provides recorded-conversation transcription; Elastic indexes and retrieves memories; Dropbox imports text context; ElevenLabs provides the signed live-agent WebSocket. Each integration is credential-gated and visibly reports whether it is live.
 - Without a key, an explicitly labeled local fallback keeps the same HTTP and persistence path working for reliable rehearsals.
 - `RESET_STORE_ON_START=true` gives each server start a clean judging state while still proving refresh persistence during the demo.
 - Relationship answers show their supporting memories so the experience feels grounded rather than like generic chat.
@@ -19,15 +20,18 @@ The MVP is deliberately narrow: capture one conversation, watch it change the re
 
 - Substantive product alignment: Meta’s human-connection thesis is embodied in relationship recall, suggested reconnections, and the two-person introduction workflow.
 - Substantive build contribution: Codex scoped the MVP, implemented it, found the broken post-capture payoff through a screenshot audit, and repaired the full state-change path.
-- Implemented and credential-gated: OpenAI extraction, reasoning, and drafting run through the Responses API when `OPENAI_API_KEY` is present in `.env`. The header exposes the active backend mode.
-- Interactive but mocked: Deepgram voice capture/transcription and Dropbox document ingestion have clear UI entry points, but do not call live APIs yet.
-- Planned only: ElevenLabs voice agent and Elasticsearch retrieval are not connected.
+- Implemented and credential-gated: Meta Model API or OpenAI provides structured extraction, reasoning, and drafting.
+- Implemented and credential-gated: Deepgram Nova transcription with diarization feeds the actual memory pipeline.
+- Implemented and credential-gated: Elasticsearch indexes every captured memory and retrieves evidence for later questions.
+- Implemented and credential-gated: Dropbox lists and downloads supported text files into the capture pipeline.
+- Implemented and credential-gated: ElevenLabs Agent signed sessions stream microphone/audio and can call `ask_bridge_memory` as a client tool.
+- Current local `.env` contains no sponsor secrets, so the open preview honestly shows these integrations as off until credentials are supplied.
 
 ## Still mocked
 
-- Audio recording, transcription, diarization, and spoken agent responses.
-- Dropbox file picker and ingestion.
-- Embeddings and Elasticsearch retrieval.
+- Live provider calls cannot be verified without user-owned sponsor credentials; contract tests cover every request shape and auth header.
+- Dropbox uses a backend access token rather than a production OAuth flow.
+- Elasticsearch uses weighted full-text relationship retrieval rather than a hosted semantic inference endpoint.
 - Authentication, multi-user storage, and real message sending.
 
 ## Demo steps
