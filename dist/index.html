@@ -14,7 +14,7 @@
       type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23ecff6b'/%3E%3Cpath d='M18 39c7-15 21-15 28 0M18 25h7m14 0h7' fill='none' stroke='%2310141d' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="./styles.css?v=3" />
+    <link rel="stylesheet" href="./styles.css?v=4" />
   </head>
   <body>
     <div class="app-shell">
@@ -82,10 +82,13 @@
             <p class="eyebrow"><span></span> SATURDAY · 7:42 PM</p>
             <h1>Your people, in context.</h1>
           </div>
-          <button class="capture-button" id="captureButton">
-            <span aria-hidden="true">＋</span>
-            Capture memory
-          </button>
+          <div class="topbar-actions">
+            <span class="backend-status checking" id="backendStatus" title="Checking the BridgeOS backend"><i></i> Checking backend</span>
+            <button class="capture-button" id="captureButton">
+              <span aria-hidden="true">＋</span>
+              Capture memory
+            </button>
+          </div>
         </header>
 
         <section class="ask-section" aria-labelledby="ask-heading">
@@ -128,20 +131,20 @@
         <section class="change-panel hidden" id="changePanel" aria-live="polite">
           <div class="change-mark" aria-hidden="true">↗</div>
           <div class="change-copy">
-            <p class="eyebrow">MEMORY UPDATED · 3 NEW LINKS</p>
-            <h2>Amara opened a warm path to Vercel’s tool-calling team.</h2>
-            <p>This new conversation now outranks a cold booth visit: it matches your applied-AI interests, remote preference, and a promise you made tonight.</p>
+            <p class="eyebrow" id="changeEyebrow">MEMORY UPDATED · 3 NEW LINKS</p>
+            <h2 id="changeTitle">Amara opened a warm path to Vercel’s tool-calling team.</h2>
+            <p id="changeReason">This new conversation now outranks a cold booth visit: it matches your applied-AI interests, remote preference, and a promise you made tonight.</p>
             <div class="reasoning-trace" aria-label="How BridgeOS reached this recommendation">
-              <span><small>CONVERSATION</small>Amara · Vercel</span>
+              <span><small>CONVERSATION</small><span id="traceConversation">Amara · Vercel</span></span>
               <b>＋</b>
               <span><small>YOUR GOAL</small>Applied AI · remote</span>
               <b>→</b>
-              <span class="trace-result"><small>NEXT ACTION</small>Send demo + ask for intro</span>
+              <span class="trace-result"><small>NEXT ACTION</small><span id="traceAction">Send demo + ask for intro</span></span>
             </div>
           </div>
           <div class="change-actions">
-            <button class="primary-action" data-question="What changed after meeting Amara?">Explain why <span>→</span></button>
-            <button class="quiet-action" data-action="draft" data-person="amara">Draft follow-up</button>
+            <button class="primary-action" id="explainChange" data-question="What changed after meeting Amara?">Explain why <span>→</span></button>
+            <button class="quiet-action" id="draftChange" data-action="draft" data-person="amara">Draft follow-up</button>
           </div>
         </section>
 
@@ -280,15 +283,15 @@
       </div>
       <div class="processing-state hidden" id="processingState">
         <div class="processing-pulse"><i></i></div>
-        <h3>Building relationship memory…</h3>
+        <h3 id="processingTitle">Building relationship memory…</h3>
         <ul><li class="done">Transcript understood</li><li class="done">Person and organization identified</li><li>Finding connections and commitments</li></ul>
       </div>
       <div class="memory-result hidden" id="memoryResult">
         <div class="success-mark">✓</div>
-        <p class="eyebrow">MEMORY ADDED</p>
-        <h3>Amara Chen · Vercel</h3>
-        <p>BridgeOS connected this conversation to your interests in AI developer tools and remote software roles.</p>
-        <div class="result-grid"><span><small>TOPICS</small>AI SDK, streaming, DX</span><span><small>COMMITMENT</small>Send demo after judging</span><span><small>OPPORTUNITY</small>Warm intro to tool-calling engineer</span></div>
+        <p class="eyebrow" id="memoryProvider">MEMORY ADDED</p>
+        <h3 id="memoryPerson">Amara Chen · Vercel</h3>
+        <p id="memorySummary">BridgeOS connected this conversation to your interests in AI developer tools and remote software roles.</p>
+        <div class="result-grid"><span><small>TOPICS</small><span id="memoryTopics">AI SDK, streaming, DX</span></span><span><small>COMMITMENT</small><span id="memoryCommitment">Send demo after judging</span></span><span><small>OPPORTUNITY</small><span id="memoryOpportunity">Warm intro to tool-calling engineer</span></span></div>
         <button class="process-button" id="finishCapture">See what this changed <span>→</span></button>
       </div>
     </aside>
@@ -306,6 +309,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=3"></script>
+    <script src="./app.js?v=4"></script>
   </body>
 </html>

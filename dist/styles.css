@@ -64,6 +64,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 .workspace { padding: 35px clamp(28px, 4.5vw, 74px) 80px; min-width: 0; max-width: 1500px; width: 100%; margin: 0 auto; }
 .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.backend-status { display: inline-flex; align-items: center; gap: 7px; min-height: 31px; padding: 0 10px; border: 1px solid rgba(100,218,144,.2); border-radius: 999px; background: rgba(100,218,144,.06); color: #8edbaa; font-size: .58rem; font-weight: 760; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+.backend-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 9px rgba(100,218,144,.6); }
+.backend-status.local { border-color: rgba(128,151,255,.2); background: rgba(128,151,255,.07); color: #9eaefd; }
+.backend-status.local i { background: #8097ff; box-shadow: 0 0 9px rgba(128,151,255,.6); }
+.backend-status.checking, .backend-status.offline { border-color: var(--line); background: #171b23; color: #777f8b; }
+.backend-status.checking i { animation: listen 1.2s infinite; }
+.backend-status.offline i { background: var(--coral); box-shadow: none; }
 .eyebrow { margin: 0 0 8px; color: #747c88; font-size: .68rem; letter-spacing: .16em; font-weight: 720; }
 .eyebrow > span { display: inline-block; width: 6px; height: 6px; background: var(--acid); border-radius: 50%; margin-right: 7px; box-shadow: 0 0 10px rgba(231,255,107,.45); }
 h1, h2, h3, p { text-wrap: pretty; }
@@ -315,6 +323,7 @@ h2 { margin: 0; font-size: clamp(1.25rem, 1.7vw, 1.7rem); line-height: 1.2; lett
   .workspace { padding: 23px 16px 95px; }
   .topbar { align-items: center; }
   .topbar .eyebrow { display: none; }
+  .backend-status { display: none; }
   h1 { font-size: 1.55rem; }
   .capture-button { font-size: 0; width: 43px; padding: 0; justify-content: center; }
   .capture-button span { font-size: 1.2rem; }

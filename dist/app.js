@@ -53,73 +53,126 @@ const conversations = [
 ];
 
 let memoryIngested = false;
-const amaraRecord = {
-  id: "amara", initials: "AC", avatar: "avatar-amara", name: "Amara Chen", role: "Developer Experience", company: "Vercel",
-  summary: "Builds developer experience for AI apps on a remote-friendly team. Offered a warm introduction to an engineer working on tool calling.",
-  topics: ["AI SDK", "tool calling", "remote work"], met: "Today · 7:38 PM", memories: 1,
-  timeline: ["Recommended the AI SDK streaming helpers and offered an introduction to a tool-calling engineer.", "You promised to send the BridgeOS demo after judging."],
-  ask: "Ask which tool-calling failure modes their developer-experience team sees most often."
-};
+let latestMemory = null;
+let pendingMemory = null;
+let latestBackendState = null;
+let backendMode = "offline";
 
 const els = Object.fromEntries([
   "backdrop", "captureDrawer", "detailDrawer", "composer", "toast", "askInput", "answerPanel", "answerTitle", "answerBody",
   "peopleDirectory", "conversationList", "peopleList", "mapView", "todayView", "peopleView", "conversationsView", "changePanel"
 ].map(id => [id, document.getElementById(id)]));
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character]);
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `Backend request failed (${response.status}).`);
+  return payload;
+}
+
+function setBackendStatus(mode, model = "") {
+  backendMode = mode;
+  const status = document.getElementById("backendStatus");
+  status.className = `backend-status ${mode}`;
+  if (mode === "openai") {
+    status.innerHTML = `<i></i> AI backend live`;
+    status.title = `OpenAI Responses API · ${model}`;
+  } else if (mode === "local") {
+    status.innerHTML = `<i></i> Local backend`;
+    status.title = "Server-backed persistence with deterministic local reasoning. Add OPENAI_API_KEY to .env for model-backed intelligence.";
+  } else {
+    status.innerHTML = `<i></i> Backend offline`;
+    status.title = "Start BridgeOS with node server.mjs.";
+  }
+}
+
 function avatar(person) {
-  return `<span class="avatar ${person.avatar}">${person.initials}</span>`;
+  return `<span class="avatar ${escapeHtml(person.avatar)}">${escapeHtml(person.initials)}</span>`;
 }
 
 function renderPeople(query = "") {
   const q = query.trim().toLowerCase();
   const matches = Object.values(people).filter(p => [p.name, p.role, p.company, p.summary, ...p.topics].join(" ").toLowerCase().includes(q));
   els.peopleDirectory.innerHTML = matches.map(p => `
-    <button class="directory-card" data-person="${p.id}">
-      <div class="directory-top">${avatar(p)}<div><strong>${p.name}</strong><small>${p.role} · ${p.company}</small></div></div>
-      <p>${p.summary}</p>
-      <div class="topic-row">${p.topics.map(t => `<span>${t}</span>`).join("")}</div>
-      <div class="memory-count">${p.memories} ${p.memories === 1 ? "memory" : "memories"} · last seen ${p.met.toLowerCase()}</div>
+    <button class="directory-card" data-person="${escapeHtml(p.id)}">
+      <div class="directory-top">${avatar(p)}<div><strong>${escapeHtml(p.name)}</strong><small>${escapeHtml(p.role)} · ${escapeHtml(p.company)}</small></div></div>
+      <p>${escapeHtml(p.summary)}</p>
+      <div class="topic-row">${p.topics.map(t => `<span>${escapeHtml(t)}</span>`).join("")}</div>
+      <div class="memory-count">${escapeHtml(p.memories)} ${p.memories === 1 ? "memory" : "memories"} · last seen ${escapeHtml(p.met.toLowerCase())}</div>
     </button>`).join("") || `<p class="reason">No one matches that search yet.</p>`;
 }
 
 function renderLists() {
-  els.peopleList.innerHTML = Object.values(people).map(p => `<button class="list-person" data-person="${p.id}">${avatar(p)}<span><strong>${p.name}</strong><small>${p.company} · ${p.topics[0]}</small></span></button>`).join("");
+  els.peopleList.innerHTML = Object.values(people).map(p => `<button class="list-person" data-person="${escapeHtml(p.id)}">${avatar(p)}<span><strong>${escapeHtml(p.name)}</strong><small>${escapeHtml(p.company)} · ${escapeHtml(p.topics[0])}</small></span></button>`).join("");
   els.conversationList.innerHTML = conversations.map(c => {
     const p = people[c.person];
-    return `<button class="conversation-item" data-person="${p.id}"><div class="conversation-date"><strong>${c.time}</strong>${c.day}</div><div><h3>${c.title}</h3><p>${c.detail}</p></div><span>${c.duration} →</span></button>`;
+    return `<button class="conversation-item" data-person="${escapeHtml(p.id)}"><div class="conversation-date"><strong>${escapeHtml(c.time)}</strong>${escapeHtml(c.day)}</div><div><h3>${escapeHtml(c.title)}</h3><p>${escapeHtml(c.detail)}</p></div><span>${escapeHtml(c.duration)} →</span></button>`;
   }).join("");
   renderPeople();
 }
 
-function addAmaraMemory() {
-  if (memoryIngested) return;
+function addCapturedMemory(memory, state = {}) {
+  if (!memory) return;
+  latestMemory = memory;
+  const personId = memory.personId || "amara";
+  const firstName = memory.personName.split(" ")[0];
   memoryIngested = true;
-  people.amara = amaraRecord;
-  conversations.unshift({ day: "SAT", time: "7:38", title: "AI developer experience with Amara", person: "amara", detail: "AI SDK streaming, tool calling, and a promised post-judging demo", duration: "4 min" });
-  document.getElementById("peopleCount").textContent = "7";
-  document.getElementById("conversationCount").textContent = "9";
-  document.getElementById("connectionCount").textContent = "17";
+  people[personId] = {
+    id: personId,
+    initials: memory.initials || firstName.slice(0, 2).toUpperCase(),
+    avatar: "avatar-amara",
+    name: memory.personName,
+    role: memory.role,
+    company: memory.company,
+    summary: memory.summary,
+    topics: memory.topics,
+    met: memory.dateLabel || "Today",
+    memories: 1,
+    timeline: [memory.opportunity, `Commitment: ${memory.commitment}`],
+    ask: `Ask what context would make “${memory.nextAction}” most useful.`
+  };
+  if (!conversations.some(item => item.memoryId === memory.id)) {
+    const time = memory.dateLabel?.match(/\d{1,2}:\d{2}/)?.[0] || "NOW";
+    conversations.unshift({ memoryId: memory.id, day: "SAT", time, title: memory.conversationTitle, person: personId, detail: memory.conversationDetail, duration: "4 min" });
+  }
+  document.getElementById("peopleCount").textContent = String(state.peopleCount || 7);
+  document.getElementById("conversationCount").textContent = String(state.conversationCount || 9);
+  document.getElementById("connectionCount").textContent = String(state.connectionCount || 17);
   document.getElementById("briefingEyebrow").textContent = "YOUR UPDATED BRIEF";
   document.getElementById("briefingTitle").textContent = "New context. Three higher-signal moves.";
   document.getElementById("topPriority").classList.add("is-new");
   document.getElementById("topPriority").innerHTML = `
     <div class="card-kicker"><span class="rank">01</span> FOLLOW UP NOW <span class="new-badge">NEW</span></div>
     <div class="person-line">
-      <span class="avatar avatar-amara">AC</span>
-      <div><h3>Amara Chen</h3><p>Developer Experience · Vercel</p></div>
-      <span class="match">98% fit</span>
+      <span class="avatar avatar-amara">${escapeHtml(people[personId].initials)}</span>
+      <div><h3>${escapeHtml(memory.personName)}</h3><p>${escapeHtml(memory.role)} · ${escapeHtml(memory.company)}</p></div>
+      <span class="match">${escapeHtml(memory.fitScore)}% fit</span>
     </div>
-    <p class="reason">Your new conversation created a warm path to Vercel’s tool-calling team—and you promised to send the demo after judging.</p>
-    <div class="topic-row"><span>AI SDK</span><span>tool calling</span><span>remote-friendly</span></div>
+    <p class="reason">${escapeHtml(memory.recommendationReason)}</p>
+    <div class="topic-row">${memory.topics.slice(0, 3).map(topic => `<span>${escapeHtml(topic)}</span>`).join("")}</div>
     <div class="card-actions">
-      <button class="primary-action" data-action="draft" data-person="amara">Draft follow-up <span>→</span></button>
-      <button class="icon-action" data-person="amara" aria-label="Open Amara's memory">•••</button>
+      <button class="primary-action" data-action="draft" data-person="${escapeHtml(personId)}">Draft follow-up <span>→</span></button>
+      <button class="icon-action" data-person="${escapeHtml(personId)}" aria-label="Open ${escapeHtml(memory.personName)} memory">•••</button>
     </div>`;
   const suggestion = document.querySelector("[data-question='Who mentioned software engineering opportunities?']");
   if (suggestion) {
-    suggestion.dataset.question = "What changed after meeting Amara?";
+    suggestion.dataset.question = `What changed after meeting ${firstName}?`;
     suggestion.textContent = "What changed?";
   }
+  document.getElementById("changeEyebrow").textContent = "MEMORY UPDATED · 3 NEW LINKS";
+  document.getElementById("changeTitle").textContent = `${firstName} changed your highest-priority next move.`;
+  document.getElementById("changeReason").textContent = memory.recommendationReason;
+  document.getElementById("traceConversation").textContent = `${firstName} · ${memory.company}`;
+  document.getElementById("traceAction").textContent = memory.nextAction;
+  document.getElementById("explainChange").dataset.question = `What changed after meeting ${firstName}?`;
+  document.getElementById("draftChange").dataset.person = personId;
   renderLists();
 }
 
@@ -157,16 +210,16 @@ function openPerson(id) {
   const p = people[id];
   if (!p) return;
   document.getElementById("detailContent").innerHTML = `
-    <div class="detail-hero">${avatar(p)}<div><h2 id="detailName">${p.name}</h2><p>${p.role} · ${p.company}</p></div></div>
-    <div class="detail-block"><h3>WHAT YOU KNOW</h3><p>${p.summary}</p><div class="topic-row">${p.topics.map(t => `<span>${t}</span>`).join("")}</div></div>
-    <div class="detail-block"><h3>ASK NEXT</h3><p>${p.ask}</p></div>
-    <div class="detail-block"><h3>MEMORY TRAIL</h3>${p.timeline.map((m, i) => `<div class="memory-event"><small>${i ? "Inferred context" : p.met}</small><p>${m}</p></div>`).join("")}</div>
-    <button class="process-button" data-detail-draft="${p.id}">Draft a follow-up <span>→</span></button>`;
+    <div class="detail-hero">${avatar(p)}<div><h2 id="detailName">${escapeHtml(p.name)}</h2><p>${escapeHtml(p.role)} · ${escapeHtml(p.company)}</p></div></div>
+    <div class="detail-block"><h3>WHAT YOU KNOW</h3><p>${escapeHtml(p.summary)}</p><div class="topic-row">${p.topics.map(t => `<span>${escapeHtml(t)}</span>`).join("")}</div></div>
+    <div class="detail-block"><h3>ASK NEXT</h3><p>${escapeHtml(p.ask)}</p></div>
+    <div class="detail-block"><h3>MEMORY TRAIL</h3>${p.timeline.map((m, i) => `<div class="memory-event"><small>${i ? "Inferred context" : escapeHtml(p.met)}</small><p>${escapeHtml(m)}</p></div>`).join("")}</div>
+    <button class="process-button" data-detail-draft="${escapeHtml(p.id)}">Draft a follow-up <span>→</span></button>`;
   els.captureDrawer.classList.remove("open");
   showOverlay(els.detailDrawer);
 }
 
-function draft(type, id) {
+async function draft(type, id) {
   let to, text, evidence;
   if (type === "intro") {
     to = "Mina Park + Ravi Shah";
@@ -175,12 +228,8 @@ function draft(type, id) {
   } else {
     const p = people[id] || people.theo;
     to = `${p.name} · ${p.company}`;
-    text = id === "lena"
-      ? `Hi Lena — great meeting you at HackMIT. I kept thinking about our conversation on endpointing and interruption handling for real-time voice agents. We’ve now got the streaming path working, and I’d love to take you up on your offer to review the architecture. Are you around near the Deepgram booth before 9:30?`
-      : id === "amara"
-        ? `Hi Amara — great meeting you near the sponsor booths. I checked out the AI SDK streaming helpers you recommended, and I’ll send our BridgeOS demo right after judging as promised. I’d also love to take you up on the introduction to the engineer working on tool calling—the overlap with our agent workflow feels especially relevant. Thanks again!`
-        : `Hi Theo — great talking with you about making voice agents feel natural under interruption. We implemented the turn-taking change you suggested, and the 30-second demo is ready. I’d love to send it over and hear what you think after judging. Thanks again for the practical advice!`;
-    evidence = `Grounded in ${p.memories} ${p.memories === 1 ? "memory" : "memories"} with ${p.name}`;
+    text = "Drafting a grounded follow-up…";
+    evidence = `Reading stored context for ${p.name}`;
   }
   document.getElementById("messageTo").textContent = `To: ${to}`;
   document.getElementById("messageText").value = text;
@@ -189,58 +238,35 @@ function draft(type, id) {
   els.composer.classList.remove("hidden");
   els.backdrop.classList.remove("hidden");
   document.body.style.overflow = "hidden";
+  if (type === "intro") return;
+  try {
+    const result = await api("/api/drafts", { method: "POST", body: JSON.stringify({ personId: id }) });
+    document.getElementById("messageTo").textContent = `To: ${result.draft.to}`;
+    document.getElementById("messageText").value = result.draft.text;
+    document.getElementById("draftEvidence").textContent = `${result.draft.evidence} · ${result.provider === "openai" ? "AI generated" : "local backend"}`;
+  } catch (error) {
+    closeOverlays();
+    toast(error.message);
+  }
 }
 
-function answerQuestion(question) {
-  const q = question.trim().toLowerCase();
-  if (!q) return;
-  els.askInput.value = question;
+async function answerQuestion(question) {
+  const cleanQuestion = question.trim();
+  if (!cleanQuestion) return;
+  els.askInput.value = cleanQuestion;
   els.answerPanel.classList.remove("hidden");
-  let title = "Here’s what your memory says";
-  let lead = "I connected your conversations, interests, and open commitments—not just matching keywords.";
-  let items = [];
-  let evidence = [];
-  if (q.includes("amara") || q.includes("what changed") || q.includes("new memory") || q.includes("after meeting")) {
-    if (!memoryIngested) {
-      title = "Capture Amara’s conversation first";
-      lead = "That memory has not been added yet. Use Capture memory to turn the sample conversation into a person, commitment, opportunity, and next action.";
-      items = [["Ready to capture", "The sample transcript is already loaded", "amara"]];
-      evidence = ["No Amara memory yet"];
-    } else {
-      title = "Amara is now your highest-leverage follow-up";
-      lead = "The new conversation changed your plan: Amara can connect you to a Vercel engineer working on tool calling, which directly overlaps with your applied-AI goals. Send the demo after judging and ask for the warm introduction in the same note.";
-      items = [["Do tonight", "Send the promised demo and ask for the tool-calling introduction", "amara"], ["Why it fits", "AI developer tools · remote-friendly team · warm path", "amara"]];
-      evidence = ["Conversation · 7:38 PM", "Profile · applied AI + remote", "Commitment · send demo"];
-    }
-  } else if (q.includes("software") || q.includes("swe") || q.includes("opportunit") || q.includes("remote")) {
-    title = "Ravi mentioned the clearest SWE opportunity";
-    lead = "Ravi Shah said Neon expects remote-friendly software engineering internships this fall. Lena also mentioned Deepgram’s Los Angeles team, which fits your location preference even though she did not explicitly mention an opening.";
-    items = [["Ravi Shah", "Direct signal · remote-friendly SWE internships", "ravi"], ["Lena Ortiz", "Adjacent signal · LA-based engineering team", "lena"]];
-    evidence = ["Ravi · 3:40 PM", "Lena · 6:48 PM"];
-  } else if (q.includes("follow up") || q.includes("tonight") || q.includes("promise")) {
-    title = memoryIngested ? "Three follow-ups are worth doing tonight" : "Two follow-ups are worth doing tonight";
-    lead = memoryIngested ? "Amara is now the highest-upside follow-up because she offered a warm introduction and you promised a demo. Theo remains the most time-sensitive; Lena is still worth catching before the booths close." : "Theo is the most time-sensitive because you explicitly promised a demo. Lena is the highest-upside conversation to continue before the booths close.";
-    items = memoryIngested ? [["Amara Chen", "Send the demo and ask for the tool-calling introduction", "amara"], ["Theo Brooks", "Send the 30-second interruption demo by 9:00 PM", "theo"], ["Lena Ortiz", "Ask for the streaming architecture review she offered", "lena"]] : [["Theo Brooks", "Send the 30-second interruption demo by 9:00 PM", "theo"], ["Lena Ortiz", "Ask for the streaming architecture review she offered", "lena"]];
-    evidence = memoryIngested ? ["3 open commitments", "Newest conversation · 7:38 PM", "Event schedule · booths close 10 PM"] : ["2 open commitments", "Event schedule · booths close 10 PM"];
-  } else if (q.includes("introdu") || q.includes("connect") || q.includes("overlap")) {
-    title = "Introduce Mina Park and Ravi Shah";
-    lead = "Mina is building agent observability around failed tool calls; Ravi works on database branching and reproducible backend state. They share a concrete problem space without already knowing each other.";
-    items = [["Shared thread", "Reproducibility for AI-native developer tools", "mina"], ["Why now", "Both are still at HackMIT and open to collaborators", "ravi"]];
-    evidence = ["Mina · agent replay", "Ravi · database branching"];
-  } else if (q.includes("deepgram") || q.includes("lena") || q.includes("voice") || q.includes("ai infra")) {
-    title = "Lena connected voice agents to your infrastructure interests";
-    lead = "She described endpointing as the key tradeoff between responsiveness and false interruptions, mentioned Deepgram’s LA team, and offered to review your streaming architecture.";
-    items = [["Ask next", people.lena.ask, "lena"], ["Follow-up", "Show the streaming path and request her architecture feedback", "lena"]];
-    evidence = ["Conversation · 6:48 PM", "3 linked topics"];
-  } else {
-    const words = q.split(/\W+/).filter(w => w.length > 3);
-    const scored = Object.values(people).map(p => ({ p, score: words.filter(w => [p.name, p.role, p.company, p.summary, ...p.topics].join(" ").toLowerCase().includes(w)).length })).sort((a,b) => b.score-a.score).slice(0,3);
-    items = scored.map(({p, score}) => [p.name, score ? p.summary : `Relevant through ${p.topics.slice(0,2).join(" and ")}`, p.id]);
-    evidence = [`${conversations.length + 2} conversations`, `${Object.keys(people).length} people`, `${memoryIngested ? 17 : 14} linked topics`];
-  }
-  els.answerTitle.textContent = title;
-  els.answerBody.innerHTML = `<p>${lead}</p><div class="answer-list">${items.map((item, i) => `<div class="answer-item"><span class="answer-num">0${i+1}</span><div><strong>${item[0]}</strong><small>${item[1]}</small></div><button data-answer-person="${item[2]}">Open →</button></div>`).join("")}</div><div class="evidence-line">${evidence.map(e => `<button class="evidence-chip">⌁ ${e}</button>`).join("")}</div>`;
+  els.answerTitle.textContent = "Searching your relationship memory…";
+  els.answerBody.innerHTML = `<p>Connecting stored conversations, commitments, and goals.</p>`;
   els.answerPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+  try {
+    const result = await api("/api/ask", { method: "POST", body: JSON.stringify({ question: cleanQuestion }) });
+    const { title, lead, items, evidence } = result.answer;
+    els.answerTitle.textContent = title;
+    els.answerBody.innerHTML = `<p>${escapeHtml(lead)}</p><div class="answer-list">${items.map((item, i) => `<div class="answer-item"><span class="answer-num">0${i + 1}</span><div><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.detail)}</small></div><button data-answer-person="${escapeHtml(item.personId)}">Open →</button></div>`).join("")}</div><div class="evidence-line">${evidence.map(item => `<button class="evidence-chip">⌁ ${escapeHtml(item)}</button>`).join("")}<button class="evidence-chip">${result.provider === "openai" ? "✦ OpenAI" : "⌁ Local backend"}</button></div>`;
+  } catch (error) {
+    els.answerTitle.textContent = "The backend needs attention";
+    els.answerBody.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+  }
 }
 
 function toast(message) {
@@ -251,10 +277,26 @@ function toast(message) {
 }
 
 function resetCapture() {
+  pendingMemory = null;
   document.getElementById("processingState").classList.add("hidden");
   document.getElementById("memoryResult").classList.add("hidden");
   document.getElementById("transcriptCapture").classList.remove("hidden");
   document.querySelector(".capture-tabs").classList.remove("hidden");
+}
+
+async function hydrateBackend() {
+  try {
+    const health = await api("/api/health");
+    setBackendStatus(health.mode, health.model);
+    const state = await api("/api/state");
+    latestBackendState = state;
+    if (state.memories.length) {
+      state.memories.forEach(memory => addCapturedMemory(memory, state));
+      els.changePanel.classList.remove("hidden");
+    }
+  } catch {
+    setBackendStatus("offline");
+  }
 }
 
 function registerBridgeTools() {
@@ -263,7 +305,7 @@ function registerBridgeTools() {
   const tools = [
     {
       name: "get_bridge_memory_context",
-      description: "Read the people, topics, commitments, and conversations currently loaded in this BridgeOS relationship-memory demo. Read-only and local to this open page.",
+      description: "Read the people, topics, commitments, and conversations currently loaded in BridgeOS. Captured memories are persisted by the local backend.",
       annotations: { readOnlyHint: true, openWorldHint: false },
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       execute: async () => ({
@@ -290,13 +332,13 @@ function registerBridgeTools() {
       },
       execute: async ({ question }) => {
         if (typeof question !== "string" || !question.trim() || question.length > 500) throw new Error("Provide a question between 1 and 500 characters.");
-        answerQuestion(question.trim());
+        await answerQuestion(question.trim());
         return { question: question.trim(), title: els.answerTitle.textContent, answer: els.answerBody.innerText };
       }
     },
     {
       name: "open_bridge_capture",
-      description: "Open the BridgeOS memory-capture drawer and optionally prefill it with a transcript or rough conversation notes. This changes only the open page and does not upload or persist data.",
+      description: "Open the BridgeOS memory-capture drawer and optionally prefill it with a transcript or rough conversation notes. Processing the transcript sends it to the configured BridgeOS backend and persists the extracted memory.",
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: {
         type: "object",
@@ -308,7 +350,7 @@ function registerBridgeTools() {
         resetCapture();
         if (transcript?.trim()) document.getElementById("transcriptInput").value = transcript.trim();
         showOverlay(els.captureDrawer);
-        return { opened: true, prefilled: Boolean(transcript?.trim()), persistence: "demo-only" };
+        return { opened: true, prefilled: Boolean(transcript?.trim()), persistence: "server-backed" };
       }
     }
   ];
@@ -371,23 +413,54 @@ document.querySelectorAll("[data-capture-mode]").forEach(button => button.addEve
   document.getElementById(`${button.dataset.captureMode}Capture`).classList.remove("hidden");
 }));
 
-document.getElementById("processMemory").addEventListener("click", () => {
+document.getElementById("processMemory").addEventListener("click", async () => {
+  const processButton = document.getElementById("processMemory");
+  const transcript = document.getElementById("transcriptInput").value.trim();
+  if (transcript.length < 20) return toast("Add a little more conversation context first");
+  processButton.disabled = true;
   document.getElementById("transcriptCapture").classList.add("hidden");
   document.querySelector(".capture-tabs").classList.add("hidden");
   document.getElementById("processingState").classList.remove("hidden");
-  setTimeout(() => {
+  document.getElementById("processingTitle").textContent = backendMode === "openai" ? "OpenAI is building relationship memory…" : "Backend is building relationship memory…";
+  try {
+    const result = await api("/api/memories", {
+      method: "POST",
+      body: JSON.stringify({
+        transcript,
+        dateLabel: document.querySelector(".capture-meta input").value,
+        sourceLabel: document.querySelector(".capture-meta select").value
+      })
+    });
+    pendingMemory = result.memory;
+    latestBackendState = result.state;
+    document.querySelectorAll("#processingState li").forEach(item => item.classList.add("done"));
+    document.getElementById("memoryProvider").textContent = result.provider === "openai" ? "MEMORY ADDED · OPENAI EXTRACTED" : "MEMORY ADDED · LOCAL BACKEND";
+    document.getElementById("memoryPerson").textContent = `${result.memory.personName} · ${result.memory.company}`;
+    document.getElementById("memorySummary").textContent = result.memory.summary;
+    document.getElementById("memoryTopics").textContent = result.memory.topics.join(", ");
+    document.getElementById("memoryCommitment").textContent = result.memory.commitment;
+    document.getElementById("memoryOpportunity").textContent = result.memory.opportunity;
+    await new Promise(resolve => setTimeout(resolve, 450));
     document.getElementById("processingState").classList.add("hidden");
     document.getElementById("memoryResult").classList.remove("hidden");
-  }, 1500);
+  } catch (error) {
+    document.getElementById("processingState").classList.add("hidden");
+    document.getElementById("transcriptCapture").classList.remove("hidden");
+    document.querySelector(".capture-tabs").classList.remove("hidden");
+    toast(error.message);
+  } finally {
+    processButton.disabled = false;
+  }
 });
 
 document.getElementById("finishCapture").addEventListener("click", () => {
-  addAmaraMemory();
+  if (!pendingMemory) return toast("Process a memory first");
+  addCapturedMemory(pendingMemory, latestBackendState || {});
   closeOverlays();
   els.answerPanel.classList.add("hidden");
   els.changePanel.classList.remove("hidden");
   els.changePanel.scrollIntoView({ behavior: "smooth", block: "center" });
-  toast("Amara added · brief recalculated");
+  toast(`${pendingMemory.personName} added · brief recalculated`);
 });
 document.getElementById("recordOrb").addEventListener("click", e => { e.currentTarget.classList.toggle("recording"); toast("Voice note captured in demo mode"); });
 document.getElementById("mockDropbox").addEventListener("click", () => toast("Dropbox picker ready when API credentials are connected"));
@@ -399,4 +472,4 @@ document.getElementById("copyDraft").addEventListener("click", async () => {
 document.getElementById("sendDraft").addEventListener("click", () => { closeOverlays(); toast("Follow-up marked as sent"); });
 
 renderLists();
-registerBridgeTools();
+hydrateBackend().finally(registerBridgeTools);
