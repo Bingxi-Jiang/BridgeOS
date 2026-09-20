@@ -7,9 +7,10 @@
 **A relationship-memory copilot that turns scattered conversations into the next right action.**
 
 [![HackMIT 2026](https://img.shields.io/badge/HackMIT-2026-DFFF57?style=for-the-badge&labelColor=0B0E14)](https://hackmit.org/)
-![Node.js 20+](https://img.shields.io/badge/Node.js-20%2B-71C562?style=for-the-badge&labelColor=0B0E14)
-![Tests](https://img.shields.io/badge/tests-4%20passing-62D9FF?style=for-the-badge&labelColor=0B0E14)
-![Zero dependencies](https://img.shields.io/badge/runtime-zero%20dependencies-C5A3FF?style=for-the-badge&labelColor=0B0E14)
+![App](https://img.shields.io/badge/App-Vanilla%20JS%20%2B%20Node.js-71C562?style=for-the-badge&labelColor=0B0E14)
+![Reasoning](https://img.shields.io/badge/Reasoning-Meta%20%2B%20OpenAI-C5A3FF?style=for-the-badge&labelColor=0B0E14)
+![Voice](https://img.shields.io/badge/Voice-Deepgram%20%2B%20ElevenLabs-62D9FF?style=for-the-badge&labelColor=0B0E14)
+![Memory](https://img.shields.io/badge/Memory-Elastic%20%2B%20JSON-FF9C73?style=for-the-badge&labelColor=0B0E14)
 
 </div>
 
